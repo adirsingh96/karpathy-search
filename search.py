@@ -33,7 +33,7 @@ OUT_FILE = ROOT / "rankings.json"
 
 # ── Parameters ────────────────────────────────────────────────────────────────
 
-K1           = 1.5    # TF saturation
+K1           = 1.2    # TF saturation
 B_TITLE      = 0.4    # length norm for title field
 B_BODY       = 0.75   # length norm for body field
 TITLE_WEIGHT = 3.0    # title match multiplier vs body
