@@ -186,7 +186,8 @@ def main():
         for did, doc_score in top_docs:
             doc_weight = doc_score / score_sum
             # Combine title + body tokens for term extraction
-            all_toks = title_tokens[did] + body_tokens[did]
+            # Weight title tokens to match BM25F title field importance
+            all_toks = title_tokens[did] * int(TITLE_WEIGHT) + body_tokens[did]
             dl = len(all_toks)
             if dl == 0:
                 continue
