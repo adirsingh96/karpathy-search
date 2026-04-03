@@ -9,7 +9,7 @@ Hard interface contract (do not break these):
   OUTPUT : rankings.json      → {query_id: [doc_id, ...]}   (ranked best-first, ≤1000 per query)
 
 Everything else is fair game — rewrite the algorithm however you like.
-Current approach: BM25 with separate title / body field weighting (BM25F-style).
+Current approach: BM25F + pseudo-relevance feedback (RM3-style query expansion).
 """
 
 import json
@@ -23,13 +23,18 @@ ROOT     = Path(__file__).parent
 DATA_DIR = ROOT / "data"
 OUT_FILE = ROOT / "rankings.json"
 
-# ── Parameters (agent: change these OR rewrite the whole algorithm) ───────────
+# ── Parameters ────────────────────────────────────────────────────────────────
 
 K1           = 1.5    # TF saturation
-B_TITLE      = 0.4    # length norm for title field  (shorter → lower B is better)
+B_TITLE      = 0.4    # length norm for title field
 B_BODY       = 0.75   # length norm for body field
-TITLE_WEIGHT = 3.0    # how much more a title match counts vs. a body match
-DELTA        = 0.0    # BM25+ floor (0 = standard BM25)
+TITLE_WEIGHT = 3.0    # title match multiplier vs body
+DELTA        = 0.0    # BM25+ floor
+
+# Pseudo-relevance feedback (RM3-style)
+FB_DOCS      = 10     # number of top docs to mine for expansion terms
+FB_TERMS     = 15     # number of expansion terms to add
+FB_ALPHA     = 0.5    # weight of original query vs expansion (0=all expansion, 1=no expansion)
 
 LOWERCASE        = True
 REMOVE_STOPWORDS = True
@@ -119,7 +124,6 @@ def main():
 
     # ── BM25F scoring ─────────────────────────────────────────────────────────
     def bm25f_scores(query_tokens: list[str]) -> dict[str, float]:
-        # Collect candidate docs from both fields
         candidates: set[str] = set()
         for term in query_tokens:
             candidates.update(t_inv.get(term, {}).keys())
@@ -129,19 +133,16 @@ def main():
         for did in candidates:
             score = 0.0
             for term in query_tokens:
-                idf = b_idf.get(term, t_idf.get(term, 0.0))  # use body IDF (larger corpus)
+                idf = b_idf.get(term, t_idf.get(term, 0.0))
 
-                # Title contribution
                 tf_t   = t_inv.get(term, {}).get(did, 0)
                 norm_t = 1 - B_TITLE + B_TITLE * t_dl.get(did, t_avgdl) / t_avgdl
                 wtf_t  = TITLE_WEIGHT * tf_t / norm_t if norm_t > 0 else 0
 
-                # Body contribution
                 tf_b   = b_inv.get(term, {}).get(did, 0)
                 norm_b = 1 - B_BODY + B_BODY * b_dl.get(did, b_avgdl) / b_avgdl
                 wtf_b  = tf_b / norm_b if norm_b > 0 else 0
 
-                # Combined pseudo-TF
                 wtf  = wtf_t + wtf_b
                 tf_n = (wtf * (K1 + 1)) / (wtf + K1) + DELTA
                 score += idf * tf_n
@@ -149,18 +150,109 @@ def main():
             scores[did] = score
         return scores
 
-    # ── Run all queries ───────────────────────────────────────────────────────
-    print(f"[search] Running {len(queries):,} queries "
-          f"(K1={K1}, B_title={B_TITLE}, B_body={B_BODY}, title_weight={TITLE_WEIGHT})...")
+    # ── RM3-style pseudo-relevance feedback ──────────────────────────────────
+    def expand_query(q_toks: list[str], initial_scores: dict[str, float]) -> dict[str, float]:
+        """Mine top-k docs to find expansion terms; return term weights."""
+        # Sort and take top FB_DOCS docs
+        top_docs = sorted(initial_scores.items(), key=lambda x: x[1], reverse=True)[:FB_DOCS]
+        if not top_docs:
+            return {}
+
+        # Normalize scores to sum to 1 (doc weights)
+        score_sum = sum(s for _, s in top_docs)
+        if score_sum == 0:
+            return {}
+
+        q_set = set(q_toks)
+        term_weights: dict[str, float] = defaultdict(float)
+
+        for did, doc_score in top_docs:
+            doc_weight = doc_score / score_sum
+            # Combine title + body tokens for term extraction
+            all_toks = title_tokens[did] + body_tokens[did]
+            dl = len(all_toks)
+            if dl == 0:
+                continue
+            # Count term frequencies in this doc
+            tf_map: dict[str, int] = defaultdict(int)
+            for tok in all_toks:
+                tf_map[tok] += 1
+            # P(w|d) = tf / dl, weighted by doc relevance weight
+            for tok, tf in tf_map.items():
+                if tok in q_set:
+                    continue  # skip original query terms
+                # Weight by doc weight * tf/dl * IDF (prefer discriminative terms)
+                idf = b_idf.get(tok, t_idf.get(tok, 0.0))
+                term_weights[tok] += doc_weight * (tf / dl) * idf
+
+        # Pick top FB_TERMS
+        top_terms = sorted(term_weights.items(), key=lambda x: x[1], reverse=True)[:FB_TERMS]
+        return dict(top_terms)
+
+    def bm25f_scores_weighted(query_weights: dict[str, float]) -> dict[str, float]:
+        """Like bm25f_scores but each query term has a weight."""
+        candidates: set[str] = set()
+        for term in query_weights:
+            candidates.update(t_inv.get(term, {}).keys())
+            candidates.update(b_inv.get(term, {}).keys())
+
+        scores = {}
+        for did in candidates:
+            score = 0.0
+            for term, q_weight in query_weights.items():
+                idf = b_idf.get(term, t_idf.get(term, 0.0))
+
+                tf_t   = t_inv.get(term, {}).get(did, 0)
+                norm_t = 1 - B_TITLE + B_TITLE * t_dl.get(did, t_avgdl) / t_avgdl
+                wtf_t  = TITLE_WEIGHT * tf_t / norm_t if norm_t > 0 else 0
+
+                tf_b   = b_inv.get(term, {}).get(did, 0)
+                norm_b = 1 - B_BODY + B_BODY * b_dl.get(did, b_avgdl) / b_avgdl
+                wtf_b  = tf_b / norm_b if norm_b > 0 else 0
+
+                wtf  = wtf_t + wtf_b
+                tf_n = (wtf * (K1 + 1)) / (wtf + K1) + DELTA
+                score += q_weight * idf * tf_n
+
+            scores[did] = score
+        return scores
+
+    # ── Run all queries with PRF ──────────────────────────────────────────────
+    print(f"[search] Running {len(queries):,} queries with PRF "
+          f"(FB_DOCS={FB_DOCS}, FB_TERMS={FB_TERMS}, alpha={FB_ALPHA})...")
     rankings: dict[str, list[str]] = {}
     for qid, qtext in queries.items():
         q_toks = tokenize(qtext)
         if not q_toks:
             rankings[qid] = []
             continue
-        scored = bm25f_scores(q_toks)
+
+        # Pass 1: initial BM25F scoring
+        initial_scores = bm25f_scores(q_toks)
+
+        # Pass 2: expand query with feedback terms
+        expansion_terms = expand_query(q_toks, initial_scores)
+
+        if expansion_terms:
+            # Build combined query weights
+            # Original terms: weight FB_ALPHA (normalized equally)
+            # Expansion terms: weight (1-FB_ALPHA), normalized by their RM scores
+            orig_weight = FB_ALPHA / len(q_toks)
+            exp_total = sum(expansion_terms.values())
+            exp_scale = (1.0 - FB_ALPHA) / exp_total if exp_total > 0 else 0
+
+            query_weights: dict[str, float] = {}
+            for t in q_toks:
+                query_weights[t] = query_weights.get(t, 0) + orig_weight
+            for t, w in expansion_terms.items():
+                query_weights[t] = query_weights.get(t, 0) + w * exp_scale
+
+            final_scores = bm25f_scores_weighted(query_weights)
+        else:
+            final_scores = initial_scores
+
         rankings[qid] = [did for did, _ in
-                         sorted(scored.items(), key=lambda x: x[1], reverse=True)[:1000]]
+                         sorted(final_scores.items(), key=lambda x: x[1], reverse=True)[:1000]]
 
     with open(OUT_FILE, "w") as f:
         json.dump(rankings, f)
