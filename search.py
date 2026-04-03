@@ -195,14 +195,12 @@ def main():
             for tok in all_toks:
                 tf_map[tok] += 1
             # P(w|d) = tf / dl, weighted by doc relevance weight
+            # Include original query terms so confirmed terms get amplified (full RM3)
             for tok, tf in tf_map.items():
-                if tok in q_set:
-                    continue  # skip original query terms
-                # Weight by doc weight * tf/dl * IDF (prefer discriminative terms)
                 idf = global_idf.get(tok, 0.0)
                 term_weights[tok] += doc_weight * (tf / dl) * idf
 
-        # Pick top FB_TERMS
+        # Pick top FB_TERMS (may include original query terms if they rank highly)
         top_terms = sorted(term_weights.items(), key=lambda x: x[1], reverse=True)[:FB_TERMS]
         return dict(top_terms)
 
