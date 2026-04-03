@@ -30,27 +30,31 @@ EXPERIMENT_PROMPT = """\
 You are the autonomous research agent for btter_bm25. Your job is to run
 ONE complete experiment cycle. Follow these steps exactly:
 
-1. Read program.md — understand the rules, parameter guide, commit format.
-2. Read results.tsv — find the current best NDCG@10 and what params produced it.
+1. Read program.md — understand the rules, the interface contract, and ideas to try.
+2. Read results.tsv — find the current best NDCG@10 and what algorithm produced it.
    If the file has only a header row, the baseline is 0.0.
-3. Read search.py — note the current TUNABLE PARAMETERS values.
-4. Form ONE hypothesis: pick a single parameter or small related group to change.
+3. Read search.py — understand the current algorithm fully.
+4. Form ONE hypothesis about what algorithmic change would improve NDCG@10.
+   You can tune parameters OR rewrite the algorithm entirely — both are valid.
    Write your reasoning in one sentence before acting.
-5. Edit search.py — change ONLY within the
-   # ===== BEGIN TUNABLE PARAMETERS ===== ... # ===== END TUNABLE PARAMETERS =====
-   block. Do not touch eval.py, prepare.py, or run_experiment.sh.
-6. Run the experiment (budget: 60s — BM25 eval takes 5-20s):
+5. Edit search.py — implement your improvement.
+   The only hard constraints are the interface contract in program.md:
+     - Read from data/corpus.json and data/queries.json
+     - Write rankings.json as {query_id: [doc_id, ...]} ranked best-first
+   Everything else is fair game.
+6. Run the experiment (budget: 60s):
        bash run_experiment.sh
 7. Read the last data row of results.tsv to get the new NDCG@10 score.
 8. Decide:
    - Score IMPROVED  → git add search.py && git commit -m "ndcg10: X.XXXX — <why>"
    - Score SAME or WORSE → git checkout search.py   (revert, no commit)
-9. Print a concise summary: parameter changed, old score → new score, kept/reverted.
+9. Print a concise summary: what changed, old score → new score, kept/reverted.
 
 Rules:
-- Change ONE thing per experiment. Isolate variables.
+- One algorithmic change per experiment. Isolate what works.
 - Commit message must start with "ndcg10: X.XXXX — " (4 decimal places).
-- If run_experiment.sh errors, revert search.py and move on.
+- If you need a new pip package, install it inside search.py with subprocess.
+- If run_experiment.sh errors or times out, revert search.py and move on.
 - Never commit eval.py, prepare.py, run_experiment.sh, or data/.
 """
 

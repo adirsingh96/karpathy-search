@@ -1,71 +1,92 @@
 # autoresearch — btter_bm25
 
 ## Goal
-Maximize **NDCG@10** on the NFCorpus benchmark by tuning BM25 parameters
-and preprocessing strategies in `search.py`.
+Maximize **NDCG@10** on the NFCorpus benchmark by improving the search
+algorithm in `search.py`. You are free to rewrite the algorithm entirely.
 
 ## The metric
 ```
 NDCG@10 = normalized discounted cumulative gain at rank 10
          (standard IR metric — higher is better, max = 1.0)
 ```
-Secondary metrics (tracked but not optimized):
+Secondary metrics (tracked, not optimized):
 - MAP@10  — mean average precision
-- Recall@100 — how many relevant docs appear in top 100
+- Recall@100 — coverage of relevant docs in top 100
 
 ## The one file you modify
-**`search.py`** — only the block between:
-```
-# ===== BEGIN TUNABLE PARAMETERS =====
-# ===== END TUNABLE PARAMETERS =====
-```
+**`search.py`** — you can change ANYTHING in this file.
+
+The only hard constraints are:
+1. Read corpus from        `data/corpus.json`   → `{doc_id: {"title": str, "text": str}}`
+2. Read queries from       `data/queries.json`  → `{query_id: query_text}`
+3. Write rankings to       `rankings.json`      → `{query_id: [doc_id, doc_id, ...]}`
+   (ranked best-first, up to 1000 docs per query)
+4. Must complete within the **60s time budget**
+5. Only use packages already in `.venv` or installable via pip within the script
 
 ## Off-limits files (never touch)
-- `eval.py` — computes metrics from rankings, writes results.tsv
+- `eval.py` — computes metrics from rankings.json, writes results.tsv
 - `prepare.py` — one-time setup
 - `run_experiment.sh` — orchestrates the run
 - `data/` — downloaded dataset
 
 ## Experiment cycle
-1. Read `results.tsv` — find best NDCG@10 and what params produced it
-2. Read `search.py` — note current parameter values
-3. Form ONE hypothesis — change ONE parameter or small related group
-4. Edit `search.py` — only within TUNABLE PARAMETERS
+1. Read `results.tsv` — find best NDCG@10 and what approach produced it
+2. Read `search.py` — understand the current algorithm
+3. Form ONE hypothesis about what would improve ranking quality
+4. Edit `search.py` — implement the improvement
 5. Run: `bash run_experiment.sh`
 6. Read last row of `results.tsv` for the new score
 7. If improved → `git add search.py && git commit -m "ndcg10: X.XXXX — <why>"`
    If same/worse → `git checkout search.py`
 
-## Tunable parameter guide
+## What you can try (from easy to ambitious)
 
-### BM25 core
-- `K1` (float, 0.5–3.0): term frequency saturation. Higher = more weight on repeated terms. Default 1.5
-- `B` (float, 0.0–1.0): document length normalization. 0 = no normalization, 1 = full. Default 0.75
-- `DELTA` (float, 0.0–1.0): BM25+ floor. 0 = standard BM25. Small positive values can help. Default 0.0
+### BM25 parameter tuning (baseline)
+- Tune K1, B, DELTA
 
-### Preprocessing
-- `STEMMING`: "none" | "porter" | "snowball" — reduce words to root form
-- `REMOVE_STOPWORDS`: True/False — remove common words (the, a, is...)
-- `MIN_TOKEN_LEN`: minimum character length to keep a token
-- `LOWERCASE`: True/False — case normalization
+### BM25 variants
+- **BM25+** — add DELTA floor to prevent zero scores for rare terms
+- **BM25L** — normalize TF differently to handle long documents better
+- **BM25F** — weight title and body fields separately (title is more important)
 
-### Indexing
-- `USE_BIGRAMS`: True/False — add bigrams (word pairs) to index alongside unigrams
-- `BIGRAM_WEIGHT`: relative weight of bigrams vs unigrams in scoring
+### Better preprocessing
+- Stemming (Porter, Snowball) — reduces vocabulary, improves recall
+- Stopword removal — reduces noise
+- Bigrams / trigrams — captures phrases like "machine learning"
+- Synonym expansion — broaden queries
 
-### Query
-- `QUERY_EXPANSION`: True/False — pseudo-relevance feedback (re-rank using top-k doc terms)
-- `EXPANSION_DOCS`: how many top docs to use for expansion
-- `EXPANSION_TERMS`: how many terms to add from those docs
+### Query expansion
+- **Pseudo-relevance feedback (RM3)** — take top-k retrieved docs, mine their
+  best terms, re-run the query with those added terms
+- **Bo1 / KL divergence** — probabilistic query expansion models
+
+### Smarter scoring
+- **TF-IDF variants** — log TF, sublinear TF, pivoted normalization
+- **Language model with Dirichlet smoothing** — alternative to BM25 IDF
+- **Proximity scoring** — boost docs where query terms appear near each other
+- **Position-weighted scoring** — terms in title or early in doc score higher
+
+### Ensemble / re-ranking
+- Score with multiple methods, combine scores (linear interpolation)
+- Use one algorithm for recall (top-1000), another to re-rank top-100
+
+### Learning to rank (if time allows)
+- Extract features per (query, doc) pair, train a simple ranker (LambdaMART,
+  pointwise linear model) using cross-validation on the training qrels
 
 ## Commit format
 ```
 ndcg10: X.XXXX — <one sentence: what changed and why it helps>
 ```
-4 decimal places, e.g. `ndcg10: 0.3412 — porter stemming reduces vocabulary, improves recall`
+e.g. `ndcg10: 0.3412 — BM25F with title weight=3.0 outperforms flat BM25`
 
 ## Rules
-- ONE change per experiment. Isolate variables.
-- Time budget: 60s (BM25 is fast — full eval should take 5-20s)
+- One algorithmic change per experiment — isolate what works
+- If the new approach needs a new pip package, install it inside search.py:
+  ```python
+  import subprocess, sys
+  subprocess.run([sys.executable, "-m", "pip", "install", "-q", "some-package"])
+  ```
+- If run_experiment.sh errors or times out, revert search.py and move on
 - Never commit eval.py, prepare.py, run_experiment.sh, or data/
-- If run_experiment.sh errors, revert search.py
