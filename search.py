@@ -122,6 +122,15 @@ def main():
     t_inv, t_idf, t_dl, t_avgdl = build_index(title_tokens)
     b_inv, b_idf, b_dl, b_avgdl = build_index(body_tokens)
 
+    # ── Global IDF: doc contains term if it appears in ANY field ─────────────
+    n_docs = len(corpus)
+    all_terms = set(t_inv.keys()) | set(b_inv.keys())
+    global_idf: dict[str, float] = {}
+    for term in all_terms:
+        docs_with_term = set(t_inv.get(term, {}).keys()) | set(b_inv.get(term, {}).keys())
+        df = len(docs_with_term)
+        global_idf[term] = math.log((n_docs - df + 0.5) / (df + 0.5) + 1.0)
+
     # ── BM25F scoring ─────────────────────────────────────────────────────────
     def bm25f_scores(query_tokens: list[str]) -> dict[str, float]:
         candidates: set[str] = set()
@@ -133,7 +142,7 @@ def main():
         for did in candidates:
             score = 0.0
             for term in query_tokens:
-                idf = b_idf.get(term, t_idf.get(term, 0.0))
+                idf = global_idf.get(term, 0.0)
 
                 tf_t   = t_inv.get(term, {}).get(did, 0)
                 norm_t = 1 - B_TITLE + B_TITLE * t_dl.get(did, t_avgdl) / t_avgdl
@@ -182,7 +191,7 @@ def main():
                 if tok in q_set:
                     continue  # skip original query terms
                 # Weight by doc weight * tf/dl * IDF (prefer discriminative terms)
-                idf = b_idf.get(tok, t_idf.get(tok, 0.0))
+                idf = global_idf.get(tok, 0.0)
                 term_weights[tok] += doc_weight * (tf / dl) * idf
 
         # Pick top FB_TERMS
@@ -200,7 +209,7 @@ def main():
         for did in candidates:
             score = 0.0
             for term, q_weight in query_weights.items():
-                idf = b_idf.get(term, t_idf.get(term, 0.0))
+                idf = global_idf.get(term, 0.0)
 
                 tf_t   = t_inv.get(term, {}).get(did, 0)
                 norm_t = 1 - B_TITLE + B_TITLE * t_dl.get(did, t_avgdl) / t_avgdl
