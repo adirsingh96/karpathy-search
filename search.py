@@ -12,6 +12,14 @@ Everything else is fair game — rewrite the algorithm however you like.
 Current approach: BM25F + pseudo-relevance feedback (RM3-style query expansion).
 """
 
+import subprocess, sys
+subprocess.run([sys.executable, "-m", "pip", "install", "-q", "nltk"], check=False)
+import nltk
+try:
+    nltk.data.find("tokenizers/punkt")
+except LookupError:
+    nltk.download("punkt", quiet=True)
+
 import json
 import math
 import re
@@ -38,7 +46,7 @@ FB_ALPHA     = 0.5    # weight of original query vs expansion (0=all expansion, 
 
 LOWERCASE        = True
 REMOVE_STOPWORDS = True
-STEMMING         = "none"   # "none" | "porter" | "snowball"
+STEMMING         = "porter"   # "none" | "porter" | "snowball"
 MIN_TOKEN_LEN    = 2
 STRIP_PUNCT      = True
 
