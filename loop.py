@@ -58,7 +58,7 @@ Rules:
 - Never commit eval.py, prepare.py, run_experiment.sh, or data/.
 """
 
-EXPERIMENT_TIMEOUT_S = 120   # generous ceiling; actual eval takes <20s
+EXPERIMENT_TIMEOUT_S = 600   # 10 min ceiling; agent needs ~1-3 min to read/think/edit/run
 
 
 def find_claude_cli() -> str:

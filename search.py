@@ -44,6 +44,10 @@ FB_DOCS      = 10     # number of top docs to mine for expansion terms
 FB_TERMS     = 15     # number of expansion terms to add
 FB_ALPHA     = 0.5    # weight of original query vs expansion (0=all expansion, 1=no expansion)
 
+# RRF combination
+RRF_K        = 60     # RRF rank offset (standard: 60)
+RRF_TITLE_W  = 0.4    # weight for title-only BM25 signal in RRF
+
 LOWERCASE        = True
 REMOVE_STOPWORDS = True
 STEMMING         = "porter"   # "none" | "porter" | "snowball"
