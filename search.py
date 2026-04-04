@@ -305,15 +305,21 @@ def main():
 
         if expansion_terms:
             # Build combined query weights
-            # Original terms: weight FB_ALPHA (normalized equally)
-            # Expansion terms: weight (1-FB_ALPHA), normalized by their RM scores
-            orig_weight = FB_ALPHA / len(q_toks)
+            # Original terms: weight FB_ALPHA, scaled by IDF (rarer terms get more weight)
+            orig_idf = {t: global_idf.get(t, 0.0) for t in q_toks}
+            orig_idf_total = sum(orig_idf.values())
             exp_total = sum(expansion_terms.values())
             exp_scale = (1.0 - FB_ALPHA) / exp_total if exp_total > 0 else 0
 
             query_weights: dict[str, float] = {}
-            for t in q_toks:
-                query_weights[t] = query_weights.get(t, 0) + orig_weight
+            if orig_idf_total > 0:
+                orig_scale = FB_ALPHA / orig_idf_total
+                for t in q_toks:
+                    query_weights[t] = query_weights.get(t, 0) + orig_idf[t] * orig_scale
+            else:
+                orig_weight = FB_ALPHA / len(q_toks)
+                for t in q_toks:
+                    query_weights[t] = query_weights.get(t, 0) + orig_weight
             for t, w in expansion_terms.items():
                 query_weights[t] = query_weights.get(t, 0) + w * exp_scale
 
