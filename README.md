@@ -1,4 +1,4 @@
-# btter_bm25
+# karpathy-search
 
 Autonomous BM25 search algorithm improvement using the [autoresearch](https://github.com/karpathy/autoresearch) pattern by [@karpathy](https://twitter.com/karpathy). A Claude agent iteratively rewrites the search algorithm — not just tunes parameters — to maximize NDCG@10 on the NFCorpus benchmark.
 
@@ -98,8 +98,8 @@ NDCG@10 = your_DCG / ideal_DCG
 ## Setup
 
 ```bash
-git clone https://github.com/adirsingh96/btter_bm25
-cd btter_bm25
+git clone https://github.com/adirsingh96/karpathy-search
+cd karpathy-search
 
 # Creates .venv, installs deps, downloads NFCorpus, runs baseline
 python prepare.py
@@ -130,7 +130,7 @@ The loop picks up from wherever it left off — it reads `results.tsv` and the c
 ## Project structure
 
 ```
-btter_bm25/
+karpathy-search/
 ├── search.py           # The search algorithm — the agent rewrites this
 ├── eval.py             # Evaluation harness (NDCG@10, MAP@10, Recall@100) — do not modify
 ├── prepare.py          # One-time setup: venv, dataset download, baseline run
