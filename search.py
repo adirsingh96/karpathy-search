@@ -39,6 +39,9 @@ B_BODY       = 0.75   # length norm for body field
 TITLE_WEIGHT = 3.0    # title match multiplier vs body
 DELTA        = 0.0    # BM25+ floor
 
+# Proximity scoring
+PROX_WEIGHT  = 0.15   # fraction of top BM25F score added as proximity bonus
+
 # Pseudo-relevance feedback (RM3-style)
 FB_DOCS      = 10     # number of top docs to mine for expansion terms
 FB_TERMS     = 15     # number of expansion terms to add
@@ -111,9 +114,17 @@ def main():
     print(f"[search] Tokenizing {len(corpus):,} documents...")
     title_tokens: dict[str, list[str]] = {}
     body_tokens:  dict[str, list[str]] = {}
+    title_pos_inv: dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
+    body_pos_inv:  dict[str, dict[str, list]] = defaultdict(lambda: defaultdict(list))
     for did, doc in corpus.items():
-        title_tokens[did] = tokenize(doc.get("title", ""))
-        body_tokens[did]  = tokenize(doc.get("text",  ""))
+        tt = tokenize(doc.get("title", ""))
+        bt = tokenize(doc.get("text",  ""))
+        title_tokens[did] = tt
+        body_tokens[did]  = bt
+        for pos, tok in enumerate(tt):
+            title_pos_inv[tok][did].append(pos)
+        for pos, tok in enumerate(bt):
+            body_pos_inv[tok][did].append(pos)
 
     # ── Build per-field BM25 index ────────────────────────────────────────────
     def build_index(field_tokens):
@@ -237,6 +248,45 @@ def main():
             scores[did] = score
         return scores
 
+    # ── Proximity scoring helpers ─────────────────────────────────────────────
+    def _min_sorted_dist(a: list, b: list) -> int:
+        """Minimum distance between elements of two position lists (both sorted)."""
+        i = j = 0
+        best = 10**9
+        while i < len(a) and j < len(b):
+            d = abs(a[i] - b[j])
+            if d < best:
+                best = d
+            if a[i] <= b[j]:
+                i += 1
+            else:
+                j += 1
+        return best
+
+    def proximity_bonus(q_toks: list[str], candidate_docs: set[str]) -> dict[str, float]:
+        """For each candidate doc, score how closely query terms co-occur."""
+        unique_q = list(set(q_toks))
+        if len(unique_q) < 2:
+            return {}
+        bonus: dict[str, float] = {}
+        for did in candidate_docs:
+            score = 0.0
+            for i in range(len(unique_q)):
+                t1 = unique_q[i]
+                for j in range(i + 1, len(unique_q)):
+                    t2 = unique_q[j]
+                    bp1 = body_pos_inv.get(t1, {}).get(did)
+                    bp2 = body_pos_inv.get(t2, {}).get(did)
+                    if bp1 and bp2:
+                        score += 1.0 / (1 + _min_sorted_dist(bp1, bp2))
+                    tp1 = title_pos_inv.get(t1, {}).get(did)
+                    tp2 = title_pos_inv.get(t2, {}).get(did)
+                    if tp1 and tp2:
+                        score += TITLE_WEIGHT / (1 + _min_sorted_dist(tp1, tp2))
+            if score > 0.0:
+                bonus[did] = score
+        return bonus
+
     # ── Run all queries with PRF ──────────────────────────────────────────────
     print(f"[search] Running {len(queries):,} queries with PRF "
           f"(FB_DOCS={FB_DOCS}, FB_TERMS={FB_TERMS}, alpha={FB_ALPHA})...")
@@ -270,6 +320,17 @@ def main():
             final_scores = bm25f_scores_weighted(query_weights)
         else:
             final_scores = initial_scores
+
+        # Pass 3: proximity bonus
+        prox = proximity_bonus(q_toks, set(final_scores.keys()))
+        if prox:
+            top_bm25 = max(final_scores.values())
+            top_prox = max(prox.values())
+            if top_prox > 0:
+                scale = PROX_WEIGHT * top_bm25 / top_prox
+                for did, pb in prox.items():
+                    if did in final_scores:
+                        final_scores[did] += scale * pb
 
         rankings[qid] = [did for did, _ in
                          sorted(final_scores.items(), key=lambda x: x[1], reverse=True)[:1000]]
