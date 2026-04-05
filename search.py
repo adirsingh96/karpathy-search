@@ -36,7 +36,7 @@ OUT_FILE = ROOT / "rankings.json"
 K1           = 1.0    # TF saturation
 B_TITLE      = 0.4    # length norm for title field
 B_BODY       = 0.75   # length norm for body field
-TITLE_WEIGHT = 3.0    # title match multiplier vs body
+TITLE_WEIGHT = 3.2    # title match multiplier vs body
 DELTA        = 0.0    # BM25+ floor
 
 # Proximity scoring
