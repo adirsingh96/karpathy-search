@@ -68,6 +68,18 @@ Rules:
 
 EXPERIMENT_TIMEOUT_S = 600   # 10 min ceiling
 
+# Model alias → full ID mapping
+MODEL_ALIASES = {
+    "haiku": "claude-haiku-4-5-20251001",
+    "sonnet": "claude-sonnet-4-6",
+    "opus": "claude-opus-4-6",
+}
+
+
+def resolve_model_id(model: str) -> str:
+    """Convert alias (haiku/sonnet/opus) to full model ID"""
+    return MODEL_ALIASES.get(model.lower(), model)
+
 
 def find_claude_cli() -> str:
     path = shutil.which("claude")
@@ -93,10 +105,13 @@ def run_one_experiment_cli(iteration: int, model: str) -> bool:
         print(f"[ERROR] {e}")
         return False
 
+    # CLI accepts aliases (haiku/sonnet/opus) or full IDs
+    model_id = resolve_model_id(model)
+
     cmd = [
         cli,
         "--print",
-        "--model", model,
+        "--model", model_id,
         "--allowed-tools", "Read,Edit,Bash,Glob,Grep",
         "--dangerously-skip-permissions",
         "--output-format", "text",
@@ -149,9 +164,11 @@ def run_one_experiment_api(iteration: int, model: str) -> bool:
     # so this mode is less powerful than CLI mode. We just let the agent
     # generate text suggestions for edits, rather than executing them directly.
 
+    model_id = resolve_model_id(model)
+
     try:
         response = client.messages.create(
-            model=model,
+            model=model_id,
             max_tokens=8000,
             messages=[
                 {"role": "user", "content": EXPERIMENT_PROMPT}
