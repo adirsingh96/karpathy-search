@@ -40,7 +40,7 @@ TITLE_WEIGHT = 3.0    # title match multiplier vs body
 DELTA        = 0.0    # BM25+ floor
 
 # Proximity scoring
-PROX_WEIGHT  = 0.15   # fraction of top BM25F score added as proximity bonus
+PROX_WEIGHT  = 0.12   # fraction of top BM25F score added as proximity bonus
 
 # Pseudo-relevance feedback (RM3-style)
 FB_DOCS      = 10     # number of top docs to mine for expansion terms
