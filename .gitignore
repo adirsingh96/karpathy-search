@@ -5,3 +5,4 @@ data/
 rankings.json
 results.tsv
 .DS_Store
+.env

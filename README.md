@@ -117,11 +117,27 @@ bash run_experiment.sh
 ```
 
 ### Run the autonomous loop
+
+**Mode 1 — Claude Code CLI (recommended)**
 ```bash
 python loop.py --max-experiments 20 --model sonnet
 # or
 python loop.py --max-experiments 20 --model haiku   # faster, higher rate limits
 ```
+
+Requires: `npm install -g @anthropic-ai/claude-code` and `claude login`
+
+**Mode 2 — Anthropic API**
+```bash
+# 1. Copy the example .env file and fill in your API key
+cp .env.example .env
+# Then edit .env and paste your API key from https://console.anthropic.com/account/keys
+
+# 2. Run with --use-api flag
+python loop.py --use-api --max-experiments 20
+```
+
+Requires: `ANTHROPIC_API_KEY` in `.env` or as environment variable
 
 The loop picks up from wherever it left off — it reads `results.tsv` and the current `search.py` to understand prior progress.
 

@@ -48,7 +48,9 @@ packages = [
     "datasets>=2.0.0",    # HuggingFace datasets (NFCorpus)
     "nltk>=3.8",          # tokenization, stemming
     "tqdm>=4.0",
-    "claude-code-sdk",    # autonomous loop
+    "claude-code-sdk",    # autonomous loop (CLI mode)
+    "anthropic>=0.7.0",   # Anthropic API (for --use-api mode)
+    "python-dotenv>=1.0.0",  # load .env file
 ]
 run([str(VENV_PIP), "install", "--quiet"] + packages)
 print("    dependencies installed.")
